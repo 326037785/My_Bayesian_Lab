@@ -26,6 +26,7 @@ model.F_CT = [1 sin(model.T*omega)/omega 0 -(1-cos(model.T*omega))/omega; 0 cos(
 model.omega = 0.1;  % Turn rate, rad/s
 model.sigma_turn = 0.1;
 model.Q_CT = model.sigma_turn^2 * eye(4);  % Simplified Q
+```
 
 # Initialize the Filter Parameters
 
@@ -37,6 +38,7 @@ model.mu = [1/3, 1/3, 1/3];  % Uniform prior
 model.pi = [0.7, 0.15, 0.15;
             0.15, 0.7, 0.15;
             0.15, 0.15, 0.7];
+```
 
 # Subfunctions
 
@@ -69,6 +71,7 @@ function truth = gen_truth_with_maneuvers(model)
         % Existing code to propagate state... refer to V.O's
     end
 end
+```
 
 ## Mixing Components
 
@@ -95,7 +98,7 @@ function [mixed_w, mixed_m, mixed_P] = mix_components(w, m, P, model)
     mixed_m = reshape(mixed_m, size(m, 1), []);
     mixed_P = reshape(mixed_P, size(P, 1), size(P, 2), []);
 end
-
+```
 
 ## Prediction and Update
 
@@ -121,6 +124,7 @@ function [w_update, m_update, P_update] = update_phd(z, model, w_pred, m_pred, P
         % Insert normal PHD update code here
     end
 end
+```
 
 ## IMM Interaction
 
@@ -135,7 +139,7 @@ function mu_new = update_model_probabilities(z, model, m_pred, P_pred)
     end
     mu_new = mu_new / sum(mu_new);  % Normalize
 end
-
+```
 
 ## Backbone
 
@@ -215,7 +219,7 @@ function est = run_imm_phd_filter(model, meas)
         end
     end
 end
-
+```
 
 
 
