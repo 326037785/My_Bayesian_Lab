@@ -115,53 +115,53 @@ end
 
 function [w_update, m_update, P_update, mu_update] = update_imm_phd(z, model, w_predict, m_predict, P_predict)
     num_measurements = size(z, 2);
-    num_components = size(m_predict, 2);
+    num_components = size(m_predict, 2) / length(model.mu);  % Total components divided by the number of models
     num_models = length(model.mu);
 
-    w_update = zeros(num_components * num_measurements + num_components, 1);
-    m_update = zeros(size(m_predict, 1), num_components * num_measurements + num_components);
-    P_update = zeros(size(P_predict, 1), size(P_predict, 2), num_components * num_measurements + num_components);
+    % Initialize output variables
+    w_update = zeros(num_components * num_measurements * num_models, 1);
+    m_update = zeros(size(m_predict, 1), num_components * num_measurements * num_models);
+    P_update = zeros(size(P_predict, 1), size(P_predict, 2), num_components * num_measurements * num_models);
     
     % Initialize likelihood matrix for all models
-    likelihoods = zeros(num_components, num_measurements);
+    likelihoods = zeros(num_models, num_components, num_measurements);
 
-    % Missed detection update
-    w_update(1:num_components) = model.Q_D * w_predict;
-    m_update(:, 1:num_components) = m_predict;
-    P_update(:, :, 1:num_components) = P_predict;
+    idx = 0;  % Index for updating weights, means, and covariances
 
-    % Measurement update
-    if num_measurements > 0
-        idx_offset = num_components;
-        for j = 1:num_components
+    % Measurement update for each model and each component
+    for k = 1:num_models
+        model_idx_start = (k-1) * num_components + 1;
+        model_idx_end = k * num_components;
+
+        for j = model_idx_start:model_idx_end
             [qz, m_temp, P_temp] = kalman_update_multiple(z, model.H, model.R, m_predict(:, j), P_predict(:, :, j));
-            
+
             % Store likelihood for model probability update
-            likelihoods(j, :) = qz;
+            likelihoods(k, j - model_idx_start + 1, :) = qz;
 
             for i = 1:num_measurements
-                idx = idx_offset + i;
-                w_update(idx) = model.P_D * w_predict(j) * qz(i) / (model.lambda_c * model.pdf_c + sum(w_predict .* qz));
+                idx = idx + 1;
+                w_update(idx) = model.P_D * w_predict(j) * qz(i) / (model.lambda_c * model.pdf_c + sum(w_predict(model_idx_start:model_idx_end) .* qz));
                 m_update(:, idx) = m_temp(:, i);
                 P_update(:, :, idx) = P_temp(:, :, i);
             end
-            idx_offset = idx_offset + num_measurements;
         end
     end
 
-    % Update model probabilities
+    % Update model probabilities based on the aggregated likelihoods
     mu_update = update_model_probabilities(likelihoods, model);
 end
 
 function mu_new = update_model_probabilities(likelihoods, model)
     mu_new = zeros(size(model.mu));
-    % Sum the likelihoods across all measurements for each model
     for j = 1:length(model.mu)
-        total_likelihood = sum(likelihoods(j, :));
+        % Aggregate likelihoods for each model
+        total_likelihood = sum(sum(likelihoods(j, :, :)));
         mu_new(j) = total_likelihood * model.mu(j);
     end
     mu_new = mu_new / sum(mu_new);  % Normalize to form a valid probability distribution
 end
+
 
 ```
 
