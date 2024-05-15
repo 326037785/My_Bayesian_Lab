@@ -239,7 +239,7 @@ function est = run_imm_phd_filter(model, meas)
         [w_update, m_update, P_update] = gaus_cap(w_update, m_update, P_update, filter.L_max);
 
         % State extraction
-        idx = find(w_update > 0.5);
+        idx = find(w_update > 0.5); % or just apply the expetation for cardinality estimation
         for j = 1:length(idx)
             repeat_num_targets = round(w_update(idx(j)));
             est.X{k} = [est.X{k}, repmat(m_update(:, idx(j)), 1, repeat_num_targets)];
