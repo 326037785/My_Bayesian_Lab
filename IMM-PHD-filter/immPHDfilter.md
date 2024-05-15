@@ -171,11 +171,9 @@ function est = run_imm_phd_filter(model, meas)
 
     % Recursive filtering
     for k = 1:meas.K
-        % Mix the components according to the IMM mixing probabilities
-        [w_mix, m_mix, P_mix] = mix_components(w_update, m_update, P_update, model);
 
         % Prediction
-        [w_predict, m_predict, P_predict] = predict_imm_phd(w_mix, m_mix, P_mix, model);
+        [w_predict, m_predict, P_predict] = predict_imm_phd(w_update, m_update, P_update, model);
 
         % Append birth components
         w_predict = [model.w_birth; w_predict];
