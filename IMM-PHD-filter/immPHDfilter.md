@@ -113,17 +113,56 @@ function [w_pred, m_pred, P_pred] = predict_phd(w, m, P, model)
     end
 end
 
-function [w_update, m_update, P_update] = update_phd(z, model, w_pred, m_pred, P_pred)
-    if isempty(z)
-        % Handle misdetection
-        w_update = model.Q_D * w_pred;
-        m_update = m_pred;
-        P_update = P_pred;
-    else
-        % Normal update with measurements
-        % Insert normal PHD update code here
+function [w_update, m_update, P_update, mu_update] = update_imm_phd(z, model, w_predict, m_predict, P_predict)
+    num_measurements = size(z, 2);
+    num_components = size(m_predict, 2);
+    num_models = length(model.mu);
+
+    w_update = zeros(num_components * num_measurements + num_components, 1);
+    m_update = zeros(size(m_predict, 1), num_components * num_measurements + num_components);
+    P_update = zeros(size(P_predict, 1), size(P_predict, 2), num_components * num_measurements + num_components);
+    
+    % Initialize likelihood matrix for all models
+    likelihoods = zeros(num_components, num_measurements);
+
+    % Missed detection update
+    w_update(1:num_components) = model.Q_D * w_predict;
+    m_update(:, 1:num_components) = m_predict;
+    P_update(:, :, 1:num_components) = P_predict;
+
+    % Measurement update
+    if num_measurements > 0
+        idx_offset = num_components;
+        for j = 1:num_components
+            [qz, m_temp, P_temp] = kalman_update_multiple(z, model.H, model.R, m_predict(:, j), P_predict(:, :, j));
+            
+            % Store likelihood for model probability update
+            likelihoods(j, :) = qz;
+
+            for i = 1:num_measurements
+                idx = idx_offset + i;
+                w_update(idx) = model.P_D * w_predict(j) * qz(i) / (model.lambda_c * model.pdf_c + sum(w_predict .* qz));
+                m_update(:, idx) = m_temp(:, i);
+                P_update(:, :, idx) = P_temp(:, :, i);
+            end
+            idx_offset = idx_offset + num_measurements;
+        end
     end
+
+    % Update model probabilities
+    mu_update = update_model_probabilities(likelihoods, model);
 end
+
+function mu_new = update_model_probabilities(likelihoods, model)
+    mu_new = zeros(size(model.mu));
+    % Sum the likelihoods across all measurements for each model
+    for j = 1:length(model.mu)
+        total_likelihood = sum(likelihoods(j, :));
+        mu_new(j) = total_likelihood * model.mu(j);
+    end
+    mu_new = mu_new / sum(mu_new);  % Normalize to form a valid probability distribution
+end
+
 ```
 
 ## IMM Interaction
@@ -185,13 +224,13 @@ function est = run_imm_phd_filter(model, meas)
             meas.Z{k} = gate_meas_gms(meas.Z{k}, filter.gamma, model, m_predict, P_predict);
         end
 
-        % Update
+        % Update with measurements
         if isempty(meas.Z{k})
             w_update = model.Q_D * w_predict;
             m_update = m_predict;
             P_update = P_predict;
         else
-            [w_update, m_update, P_update] = update_imm_phd(meas.Z{k}, model, w_predict, m_predict, P_predict);
+            [w_update, m_update, P_update, model.mu] = update_imm_phd(meas.Z{k}, model, w_predict, m_predict, P_predict);
         end
 
         % Mixture management: pruning, merging, capping
