@@ -1,4 +1,4 @@
-"""
+﻿"""
 目标基类
 """
 import numpy as np

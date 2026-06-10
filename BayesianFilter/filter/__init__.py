@@ -1,4 +1,4 @@
-"""
+﻿"""
 滤波器模块
 """
 from .base_filter import BaseFilter

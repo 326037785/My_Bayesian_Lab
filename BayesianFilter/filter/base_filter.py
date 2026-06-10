@@ -1,4 +1,4 @@
-"""
+﻿"""
 滤波器基类
 """
 import numpy as np

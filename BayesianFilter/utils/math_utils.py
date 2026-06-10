@@ -1,4 +1,4 @@
-"""
+﻿"""
 数学工具函数
 """
 import numpy as np

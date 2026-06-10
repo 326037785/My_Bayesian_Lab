@@ -1,4 +1,4 @@
-"""
+﻿"""
 噪声模型
 """
 import numpy as np
