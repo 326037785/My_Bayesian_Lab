@@ -53,8 +53,7 @@ class MeasurementSimulator:
         # 默认监视区域
         self.surveillance_region = ((-1000, 1000), (-1000, 1000))
         
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        self.rng = np.random.default_rng(random_seed)
     
     def set_surveillance_region(self, 
                                  x_range: Tuple[float, float],
@@ -84,7 +83,7 @@ class MeasurementSimulator:
         # 生成目标观测
         for target_id, state in target_states.items():
             # 检测概率
-            if np.random.random() > self.detection_probability:
+            if self.rng.random() > self.detection_probability:
                 continue
             
             # 根据观测类型生成观测

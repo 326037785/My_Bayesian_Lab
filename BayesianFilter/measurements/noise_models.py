@@ -32,7 +32,8 @@ class GaussianNoise(NoiseModel):
     
     def __init__(self, 
                  covariance: Optional[np.ndarray] = None,
-                 std_dev: Optional[np.ndarray] = None):
+                 std_dev: Optional[np.ndarray] = None,
+                 random_seed: Optional[int] = None):
         """
         初始化高斯噪声
         
@@ -50,6 +51,7 @@ class GaussianNoise(NoiseModel):
             raise ValueError("Must provide either covariance or std_dev")
         
         self.dimension = len(self.std_dev)
+        self.rng = np.random.default_rng(random_seed)
     
     def sample(self, size: int = 1) -> np.ndarray:
         """生成高斯噪声样本
@@ -61,10 +63,10 @@ class GaussianNoise(NoiseModel):
             噪声样本，形状为 (size, dimension)
         """
         if size == 1:
-            return np.random.multivariate_normal(
+            return self.rng.multivariate_normal(
                 np.zeros(self.dimension), self.covariance
             )
-        return np.random.multivariate_normal(
+        return self.rng.multivariate_normal(
             np.zeros(self.dimension), self.covariance, size
         )
     
@@ -84,7 +86,8 @@ class LinearMeasurementNoise(GaussianNoise):
     def __init__(self, 
                  x_std: float = 1.0, 
                  y_std: float = 1.0,
-                 correlation: float = 0.0):
+                 correlation: float = 0.0,
+                 random_seed: Optional[int] = None):
         """
         初始化线性观测噪声
         
@@ -98,7 +101,7 @@ class LinearMeasurementNoise(GaussianNoise):
             [x_std ** 2, correlation * x_std * y_std],
             [correlation * x_std * y_std, y_std ** 2]
         ])
-        super().__init__(covariance=cov)
+        super().__init__(covariance=cov, random_seed=random_seed)
         self.x_std = x_std
         self.y_std = y_std
         self.correlation = correlation
@@ -113,7 +116,8 @@ class PolarMeasurementNoise(GaussianNoise):
     def __init__(self, 
                  range_std: float = 10.0,
                  bearing_std: float = 0.01,
-                 correlation: float = 0.0):
+                 correlation: float = 0.0,
+                 random_seed: Optional[int] = None):
         """
         初始化极坐标观测噪声
         
@@ -127,7 +131,7 @@ class PolarMeasurementNoise(GaussianNoise):
             [range_std ** 2, correlation * range_std * bearing_std],
             [correlation * range_std * bearing_std, bearing_std ** 2]
         ])
-        super().__init__(covariance=cov)
+        super().__init__(covariance=cov, random_seed=random_seed)
         self.range_std = range_std
         self.bearing_std = bearing_std
         self.correlation = correlation
@@ -163,7 +167,8 @@ class NonGaussianNoise(NoiseModel):
     def __init__(self, 
                  dimension: int = 2,
                  scale: float = 1.0,
-                 degrees_of_freedom: float = 3.0):
+                 degrees_of_freedom: float = 3.0,
+                 random_seed: Optional[int] = None):
         """
         初始化非高斯噪声（t分布噪声）
         
@@ -176,6 +181,7 @@ class NonGaussianNoise(NoiseModel):
         self.scale = scale
         self.dof = degrees_of_freedom
         self._covariance = (scale ** 2 * self.dof / (self.dof - 2)) * np.eye(dimension)
+        self.rng = np.random.default_rng(random_seed)
     
     def sample(self, size: int = 1) -> np.ndarray:
         """生成t分布噪声样本
@@ -187,7 +193,7 @@ class NonGaussianNoise(NoiseModel):
             噪声样本
         """
         # 使用t分布生成重尾噪声
-        samples = np.random.standard_t(self.dof, size=(size, self.dimension))
+        samples = self.rng.standard_t(self.dof, size=(size, self.dimension))
         return self.scale * samples
     
     def get_covariance(self) -> np.ndarray:

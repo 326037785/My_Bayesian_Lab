@@ -69,6 +69,7 @@ class ParticleFilter(BaseFilter):
         
         # 设置函数
         self.f = state_transition_func if state_transition_func is not None else self._default_state_transition
+        self._using_default_likelihood = likelihood_func is None
         self.likelihood = likelihood_func if likelihood_func is not None else self._default_likelihood
         
         # 粒子集合
@@ -80,9 +81,8 @@ class ParticleFilter(BaseFilter):
         self._R_det = np.linalg.det(self._R)
         self._likelihood_coefficient = 1.0 / np.sqrt((2 * np.pi) ** self.measurement_dim * self._R_det)
         
-        # 随机种子
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        # 独立随机流（避免重置全局 RNG 破坏 i.i.d）
+        self.rng = np.random.default_rng(random_seed)
     
     def _default_state_transition(self, state: np.ndarray, dt: float, 
                                    noise: np.ndarray) -> np.ndarray:
@@ -174,7 +174,7 @@ class ParticleFilter(BaseFilter):
             
             self.particles = []
             for _ in range(self.n_particles):
-                state = np.random.multivariate_normal(initial_state, initial_covariance)
+                state = self.rng.multivariate_normal(initial_state, initial_covariance)
                 weight = 1.0 / self.n_particles
                 self.particles.append(Particle(state, weight))
         
@@ -222,7 +222,7 @@ class ParticleFilter(BaseFilter):
         # 传播每个粒子
         for particle in self.particles:
             # 生成过程噪声
-            noise = np.random.multivariate_normal(np.zeros(self.state_dim), Q)
+            noise = self.rng.multivariate_normal(np.zeros(self.state_dim), Q)
             
             # 状态转移
             particle.state = self.f(particle.state, dt, noise)
@@ -241,11 +241,27 @@ class ParticleFilter(BaseFilter):
             raise RuntimeError("Filter not initialized")
         
         z = np.asarray(measurement, dtype=np.float64)
-        
+
+        # 若传入 R 则用其计算默认似然，否则用预计算缓存
+        use_custom_R = measurement_covariance is not None
+        if use_custom_R:
+            R = np.asarray(measurement_covariance, dtype=np.float64)
+            R_inv = np.linalg.inv(R)
+            R_det = np.linalg.det(R)
+            coeff = 1.0 / np.sqrt((2 * np.pi) ** self.measurement_dim * R_det)
+
         # 更新每个粒子的权重
         for particle in self.particles:
-            # 计算似然
-            likelihood = self.likelihood(z, particle.state)
+            if use_custom_R and self._using_default_likelihood:
+                if self.state_dim >= 4:
+                    pred = np.array([particle.state[0], particle.state[2]])
+                else:
+                    pred = particle.state[:self.measurement_dim]
+                diff = z - pred
+                likelihood = coeff * np.exp(-0.5 * diff.T @ R_inv @ diff)
+            else:
+                # 计算似然
+                likelihood = self.likelihood(z, particle.state)
             particle.weight *= likelihood
         
         # 归一化权重
@@ -311,7 +327,7 @@ class ParticleFilter(BaseFilter):
         weights = weights / np.sum(weights)
         
         # 采样索引
-        indices = np.random.choice(
+        indices = self.rng.choice(
             self.n_particles, 
             size=self.n_particles, 
             p=weights
@@ -335,13 +351,14 @@ class ParticleFilter(BaseFilter):
         cumulative = np.cumsum(weights)
         
         # 生成均匀分布样本
-        u = np.random.uniform(0, 1.0 / self.n_particles)
+        u = self.rng.uniform(0, 1.0 / self.n_particles)
         positions = u + np.arange(self.n_particles) / self.n_particles
         
-        # 重采样
+        # 重采样（带越界保护）
         new_particles = []
         i, j = 0, 0
         while i < self.n_particles:
+            j = min(j, self.n_particles - 1)
             if positions[i] < cumulative[j]:
                 new_particle = self.particles[j].copy()
                 new_particle.weight = 1.0 / self.n_particles
@@ -360,9 +377,13 @@ class ParticleFilter(BaseFilter):
         # 计算每个粒子的复制次数
         n_copies = np.floor(self.n_particles * weights).astype(int)
         
-        # 确定残差
+        # 确定残差（和为 0 时回退均匀，避免除零）
         residual = weights - n_copies / self.n_particles
-        residual = residual / np.sum(residual)
+        residual_sum = np.sum(residual)
+        if residual_sum <= 0 or not np.isfinite(residual_sum):
+            residual = np.ones_like(weights) / len(weights)
+        else:
+            residual = residual / residual_sum
         
         # 第一阶段：确定性复制
         new_particles = []
@@ -375,7 +396,7 @@ class ParticleFilter(BaseFilter):
         # 第二阶段：多项式采样残差
         n_remaining = self.n_particles - len(new_particles)
         if n_remaining > 0:
-            indices = np.random.choice(
+            indices = self.rng.choice(
                 self.n_particles,
                 size=n_remaining,
                 p=residual
@@ -437,6 +458,7 @@ class ParticleFilter(BaseFilter):
     def set_likelihood_function(self, func: Callable) -> None:
         """设置似然函数"""
         self.likelihood = func
+        self._using_default_likelihood = False
     
     def set_n_particles(self, n: int) -> None:
         """设置粒子数量"""

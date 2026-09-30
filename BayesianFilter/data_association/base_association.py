@@ -12,15 +12,17 @@ class AssociationResult:
     """关联结果
     
     Attributes:
-        associations: 关联字典，键为观测索引，值为目标索引
+        associations: 关联字典，键为观测索引，值为目标索引（GNN 硬判决，仅供兼容）
         unassociated_measurements: 未关联的观测索引集合
         unassociated_targets: 未关联的目标索引集合
         association_matrix: 关联矩阵（可选）
+        association_probs: 联合关联概率 {(meas_idx, target_idx): prob}，JPDA 加权更新请用此表
     """
     associations: Dict[int, int]
     unassociated_measurements: Set[int]
     unassociated_targets: Set[int]
     association_matrix: Optional[np.ndarray] = None
+    association_probs: Optional[Dict[tuple, float]] = None
 
 
 class BaseAssociation(ABC):

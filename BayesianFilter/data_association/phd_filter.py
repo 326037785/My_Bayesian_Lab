@@ -70,7 +70,8 @@ class PHDFilter:
                  # 出生分量协方差矩阵（自动生成时使用）
                  birth_covariance: Optional[np.ndarray] = None,
                  # 自动生成的出生分量数量（默认4：上下左右各一，MATLAB风格）
-                 n_birth_components: int = 4):
+                 n_birth_components: int = 4,
+                 angle_wrap_idx: Optional[int] = None):
         """
         初始化PHD滤波器
 
@@ -125,9 +126,11 @@ class PHDFilter:
         self.h = measurement_func if measurement_func is not None else self._default_measurement
         self.H_func = measurement_jacobian if measurement_jacobian is not None else self._default_H_jacobian
 
-        # 设置噪声矩阵
+        # 设置噪声矩阵（记录用户是否提供 Q，避免 predict 覆盖）
+        self._user_provided_Q = process_noise_matrix is not None
         self.Q = process_noise_matrix if process_noise_matrix is not None else self._default_process_noise(1.0)
         self.R = measurement_noise_matrix if measurement_noise_matrix is not None else self._default_measurement_noise()
+        self.angle_wrap_idx = angle_wrap_idx
 
         # === 出生分量初始化 ===
         if birth_components is not None:
@@ -396,9 +399,9 @@ class PHDFilter:
     def _ukf_predict(self, mean: np.ndarray, covariance: np.ndarray, dt: float) -> Tuple[np.ndarray, np.ndarray]:
         """UKF预测"""
         n = len(mean)
-        alpha = 1e-3
+        alpha = 1.0
         beta = 2.0
-        kappa = 0.0
+        kappa = 3.0 - n
         lambda_ = alpha ** 2 * (n + kappa) - n
         
         # 生成Sigma点
@@ -482,6 +485,8 @@ class PHDFilter:
                 H @ comp.covariance @ H.T + self.R)
             K = comp.covariance @ H.T @ np.linalg.inv(S)
             innovation = z - z_pred
+            if self.angle_wrap_idx is not None:
+                innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
             updated_mean = comp.mean + K @ innovation
             updated_cov = (np.eye(self.state_dim) - K @ H) @ comp.covariance
         elif self.filter_type == 'EKF':
@@ -492,6 +497,8 @@ class PHDFilter:
                 H @ comp.covariance @ H.T + self.R)
             K = comp.covariance @ H.T @ np.linalg.inv(S)
             innovation = z - z_pred
+            if self.angle_wrap_idx is not None:
+                innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
             updated_mean = comp.mean + K @ innovation
             updated_cov = (np.eye(self.state_dim) - K @ H) @ comp.covariance
         elif self.filter_type == 'UKF':
@@ -510,6 +517,8 @@ class PHDFilter:
         S_inv = np.linalg.inv(S)
         d = self.measurement_dim
         innovation = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
         log_likelihood = -0.5 * d * np.log(2 * np.pi) - 0.5 * np.log(S_det) - 0.5 * innovation.T @ S_inv @ innovation
         likelihood = np.exp(log_likelihood)
         
@@ -521,9 +530,9 @@ class PHDFilter:
     def _ukf_update(self, z: np.ndarray, mean: np.ndarray, covariance: np.ndarray) -> Tuple[float, np.ndarray, np.ndarray]:
         """UKF更新"""
         n = len(mean)
-        alpha = 1e-3
+        alpha = 1.0
         beta = 2.0
-        kappa = 0.0
+        kappa = 3.0 - n
         lambda_ = alpha ** 2 * (n + kappa) - n
         
         # 生成Sigma点
@@ -568,6 +577,8 @@ class PHDFilter:
         
         # 更新
         innovation = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
         updated_mean = mean + K @ innovation
         updated_cov = covariance - K @ Pzz @ K.T
         
@@ -617,6 +628,8 @@ class PHDFilter:
         
         # 更新
         innovation = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
         updated_mean = mean + K @ innovation
         updated_cov = covariance - K @ Pzz @ K.T
         
@@ -638,8 +651,8 @@ class PHDFilter:
         Args:
             dt: 时间步长
         """
-        # 更新过程噪声
-        if self.filter_type == 'KF':
+        # 更新过程噪声（仅默认 Q 时按 dt 重算，用户 Q 保持不动）
+        if not self._user_provided_Q:
             self.Q = self._default_process_noise(dt)
         
         # 预测存活分量
@@ -779,6 +792,8 @@ class PHDFilter:
             for i, comp in enumerate(self.components):
                 # 新息
                 innovation = z - z_preds[i]
+                if self.angle_wrap_idx is not None:
+                    innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
 
                 # 似然（对数空间）
                 d = self.measurement_dim
@@ -883,6 +898,8 @@ class PHDFilter:
                 S_inv = np.linalg.inv(S)
                 for i, z in enumerate(measurements):
                     innovation = z - z_pred
+                    if self.angle_wrap_idx is not None:
+                        innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
                     distance = innovation.T @ S_inv @ innovation
                     if distance < self.gating_threshold:
                         valid_indices.add(i)
@@ -898,9 +915,9 @@ class PHDFilter:
             -> Tuple[np.ndarray, np.ndarray]:
         """UKF预测测量均值和协方差（用于门限）"""
         n = len(mean)
-        alpha = 1e-3
+        alpha = 1.0
         beta = 2.0
-        kappa = 0.0
+        kappa = 3.0 - n
         lambda_ = alpha ** 2 * (n + kappa) - n
 
         try:
@@ -1263,6 +1280,8 @@ class AdaptiveBirthPHDFilter(PHDFilter):
                     if is_explained[i]:
                         continue
                     innovation = z - z_pred
+                    if self.angle_wrap_idx is not None:
+                        innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
                     mahal = innovation.T @ S_inv @ innovation
                     if mahal < self.gating_threshold:
                         is_explained[i] = True

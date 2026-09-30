@@ -30,8 +30,7 @@ class ScenarioManager:
         self.targets: List[Target] = []
         self.current_time = 0.0
         
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        self.rng = np.random.default_rng(random_seed)
     
     def add_target(self, 
                    target_id: int,
@@ -121,7 +120,7 @@ class ScenarioManager:
         Q = motion_model.get_process_noise_matrix(
             self.time_step, self.process_noise_std
         )
-        return np.random.multivariate_normal(
+        return self.rng.multivariate_normal(
             np.zeros(Q.shape[0]), Q
         )
     
@@ -194,12 +193,12 @@ class ScenarioManager:
         """
         for i in range(n_targets):
             # 随机初始位置
-            x0 = np.random.uniform(*x_range)
-            y0 = np.random.uniform(*y_range)
+            x0 = self.rng.uniform(*x_range)
+            y0 = self.rng.uniform(*y_range)
             
             # 随机速度和方向
-            speed = np.random.uniform(*speed_range)
-            angle = np.random.uniform(0, 2 * np.pi)
+            speed = self.rng.uniform(*speed_range)
+            angle = self.rng.uniform(0, 2 * np.pi)
             vx0 = speed * np.cos(angle)
             vy0 = speed * np.sin(angle)
             
@@ -234,12 +233,12 @@ class ScenarioManager:
         model_choices = ["CV", "CA", "CT"]
         for i in range(n_targets):
             # 随机选择运动模型
-            model_type = np.random.choice(model_choices)
+            model_type = self.rng.choice(model_choices)
             
-            x0 = np.random.uniform(-500, 500)
-            y0 = np.random.uniform(-500, 500)
-            vx0 = np.random.uniform(-10, 10)
-            vy0 = np.random.uniform(-10, 10)
+            x0 = self.rng.uniform(-500, 500)
+            y0 = self.rng.uniform(-500, 500)
+            vx0 = self.rng.uniform(-10, 10)
+            vy0 = self.rng.uniform(-10, 10)
             
             # 根据模型类型创建相应维度的初始状态
             if model_type == "CV":
@@ -249,7 +248,7 @@ class ScenarioManager:
                 initial_state = np.array([x0, vx0, 0.0, y0, vy0, 0.0])
                 model_kwargs = {}
             elif model_type == "CT":
-                turn_rate = np.random.uniform(-0.2, 0.2)
+                turn_rate = self.rng.uniform(-0.2, 0.2)
                 initial_state = np.array([x0, vx0, y0, vy0])
                 model_kwargs = {"known_turn_rate": turn_rate}
             else:
@@ -286,11 +285,11 @@ class ScenarioManager:
             turn_rate: 转弯速率 (rad/s)，正值左转，负值右转
         """
         for i in range(n_targets):
-            x0 = np.random.uniform(*x_range)
-            y0 = np.random.uniform(*y_range)
+            x0 = self.rng.uniform(*x_range)
+            y0 = self.rng.uniform(*y_range)
             
-            speed = np.random.uniform(*speed_range)
-            angle = np.random.uniform(0, 2 * np.pi)
+            speed = self.rng.uniform(*speed_range)
+            angle = self.rng.uniform(0, 2 * np.pi)
             vx0 = speed * np.cos(angle)
             vy0 = speed * np.sin(angle)
             
@@ -298,7 +297,7 @@ class ScenarioManager:
             initial_state = np.array([x0, vx0, y0, vy0])
             
             # 随机选择转弯方向，使部分目标左转、部分右转
-            target_turn_rate = turn_rate * np.random.choice([-1, 1])
+            target_turn_rate = turn_rate * self.rng.choice([-1, 1])
             
             self.add_target(
                 target_id=i,
@@ -328,8 +327,8 @@ class ScenarioManager:
             walk_std: 游走标准差（控制随机运动的幅度，值越大运动越剧烈）
         """
         for i in range(n_targets):
-            x0 = np.random.uniform(*x_range)
-            y0 = np.random.uniform(*y_range)
+            x0 = self.rng.uniform(*x_range)
+            y0 = self.rng.uniform(*y_range)
             
             # RW 模型使用 2D 状态 [x, y]
             initial_state = np.array([x0, y0])
@@ -364,11 +363,11 @@ class ScenarioManager:
             speed_range: 速度范围
         """
         for i in range(n_targets):
-            x0 = np.random.uniform(*x_range)
-            y0 = np.random.uniform(*y_range)
+            x0 = self.rng.uniform(*x_range)
+            y0 = self.rng.uniform(*y_range)
             
-            speed = np.random.uniform(*speed_range)
-            angle = np.random.uniform(0, 2 * np.pi)
+            speed = self.rng.uniform(*speed_range)
+            angle = self.rng.uniform(0, 2 * np.pi)
             vx0 = speed * np.cos(angle)
             vy0 = speed * np.sin(angle)
             
@@ -384,10 +383,10 @@ class ScenarioManager:
             for j in range(1, n_maneuvers):
                 prev_model = segments[-1][0]
                 available = [m for m in model_pool if m != prev_model]
-                model_type = np.random.choice(available)
+                model_type = self.rng.choice(available)
                 
                 if model_type == "CT":
-                    turn_rate = np.random.uniform(-0.2, 0.2)
+                    turn_rate = self.rng.uniform(-0.2, 0.2)
                     model_kwargs = {"known_turn_rate": turn_rate}
                 else:
                     model_kwargs = {}
@@ -433,10 +432,10 @@ class ScenarioManager:
             # 循环分配不同模型
             model_type = model_pool[i % len(model_pool)]
             
-            x0 = np.random.uniform(*x_range)
-            y0 = np.random.uniform(*y_range)
-            speed = np.random.uniform(*speed_range)
-            angle = np.random.uniform(0, 2 * np.pi)
+            x0 = self.rng.uniform(*x_range)
+            y0 = self.rng.uniform(*y_range)
+            speed = self.rng.uniform(*speed_range)
+            angle = self.rng.uniform(0, 2 * np.pi)
             vx0 = speed * np.cos(angle)
             vy0 = speed * np.sin(angle)
             
@@ -448,7 +447,7 @@ class ScenarioManager:
                 initial_state = np.array([x0, vx0, 0.0, y0, vy0, 0.0])
                 model_kwargs = {}
             elif model_type == "CT":
-                turn_rate = np.random.uniform(-0.2, 0.2)
+                turn_rate = self.rng.uniform(-0.2, 0.2)
                 initial_state = np.array([x0, vx0, y0, vy0])
                 model_kwargs = {"known_turn_rate": turn_rate}
             elif model_type == "RW":
@@ -610,18 +609,18 @@ class ScenarioManager:
         
         for i in range(n_targets):
             # 随机出生时间
-            birth_time = np.random.uniform(0, duration * 0.3)
+            birth_time = self.rng.uniform(0, duration * 0.3)
             
             # 随机生存时间（指数分布）
-            lifetime = np.random.exponential(avg_lifetime)
+            lifetime = self.rng.exponential(avg_lifetime)
             death_time = min(birth_time + lifetime, duration)
             
             # 选择一个新生分量位置作为基础，添加随机偏移
             base_pos = birth_positions[i % len(birth_positions)]
-            x0 = base_pos[0] + np.random.uniform(-200, 200)
-            y0 = base_pos[1] + np.random.uniform(-200, 200)
-            vx0 = np.random.uniform(-10, 10)
-            vy0 = np.random.uniform(-10, 10)
+            x0 = base_pos[0] + self.rng.uniform(-200, 200)
+            y0 = base_pos[1] + self.rng.uniform(-200, 200)
+            vx0 = self.rng.uniform(-10, 10)
+            vy0 = self.rng.uniform(-10, 10)
             
             initial_state = np.array([x0, vx0, y0, vy0])
             

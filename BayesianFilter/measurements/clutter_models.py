@@ -55,11 +55,10 @@ class PoissonCount(ClutterCountModel):
             random_seed: 随机种子
         """
         self.clutter_rate = clutter_rate
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        self.rng = np.random.default_rng(random_seed)
     
     def sample_count(self) -> int:
-        return np.random.poisson(self.clutter_rate)
+        return self.rng.poisson(self.clutter_rate)
     
     def get_expected_count(self) -> float:
         return self.clutter_rate
@@ -98,11 +97,10 @@ class BinomialCount(ClutterCountModel):
         """
         self.n_trials = n_trials
         self.p = p
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        self.rng = np.random.default_rng(random_seed)
     
     def sample_count(self) -> int:
-        return np.random.binomial(self.n_trials, self.p)
+        return self.rng.binomial(self.n_trials, self.p)
     
     def get_expected_count(self) -> float:
         return self.n_trials * self.p
@@ -138,12 +136,13 @@ class UniformDistribution(ClutterDistribution):
     p_c(z) = 1/Area
     """
     
-    def __init__(self, padding: float = 200.0):
+    def __init__(self, padding: float = 200.0, random_seed: Optional[int] = None):
         """
         Args:
             padding: 包围盒边距（米）
         """
         self.padding = padding
+        self.rng = np.random.default_rng(random_seed)
     
     def sample_positions(self, 
                          n_samples: int,
@@ -159,8 +158,8 @@ class UniformDistribution(ClutterDistribution):
         # 在包围盒内均匀采样
         clutter_list = []
         for _ in range(n_samples):
-            x = np.random.uniform(x_min, x_max)
-            y = np.random.uniform(y_min, y_max)
+            x = self.rng.uniform(x_min, x_max)
+            y = self.rng.uniform(y_min, y_max)
             clutter_list.append(np.array([x, y]))
         
         return clutter_list
@@ -175,12 +174,13 @@ class GaussianDistribution(ClutterDistribution):
     注意：这是杂波位置分布，不是测量噪声！
     """
     
-    def __init__(self, clutter_std: float = 50.0):
+    def __init__(self, clutter_std: float = 50.0, random_seed: Optional[int] = None):
         """
         Args:
             clutter_std: 杂波分布标准差（米）
         """
         self.clutter_std = clutter_std
+        self.rng = np.random.default_rng(random_seed)
     
     def sample_positions(self, 
                          n_samples: int,
@@ -198,7 +198,7 @@ class GaussianDistribution(ClutterDistribution):
             
             # 在目标周围高斯采样
             for _ in range(n_target_clutter):
-                noise = np.random.randn(2) * self.clutter_std
+                noise = self.rng.standard_normal(2) * self.clutter_std
                 clutter_list.append(pos + noise)
         
         return clutter_list
@@ -215,7 +215,8 @@ class NonUniformDistribution(ClutterDistribution):
     
     def __init__(self, 
                  hotspots: Optional[List[Tuple[np.ndarray, float, float]]] = None,
-                 padding: float = 200.0):
+                 padding: float = 200.0,
+                 random_seed: Optional[int] = None):
         """
         Args:
             hotspots: 热点列表 [(位置, 半径, 相对密度), ...]
@@ -223,6 +224,7 @@ class NonUniformDistribution(ClutterDistribution):
         """
         self.hotspots = hotspots or []
         self.padding = padding
+        self.rng = np.random.default_rng(random_seed)
     
     def sample_positions(self, 
                          n_samples: int,
@@ -240,8 +242,8 @@ class NonUniformDistribution(ClutterDistribution):
         # 基础杂波（均匀分布）
         n_base = n_samples // 2
         for _ in range(n_base):
-            x = np.random.uniform(x_min, x_max)
-            y = np.random.uniform(y_min, y_max)
+            x = self.rng.uniform(x_min, x_max)
+            y = self.rng.uniform(y_min, y_max)
             clutter_list.append(np.array([x, y]))
         
         # 热点杂波
@@ -252,8 +254,8 @@ class NonUniformDistribution(ClutterDistribution):
             for center, radius, density in self.hotspots:
                 n_center = int(n_hotspot * density / total_density)
                 for _ in range(n_center):
-                    angle = np.random.uniform(0, 2 * np.pi)
-                    r = np.random.uniform(0, radius)
+                    angle = self.rng.uniform(0, 2 * np.pi)
+                    r = self.rng.uniform(0, radius)
                     x = center[0] + r * np.cos(angle)
                     y = center[1] + r * np.sin(angle)
                     clutter_list.append(np.array([x, y]))

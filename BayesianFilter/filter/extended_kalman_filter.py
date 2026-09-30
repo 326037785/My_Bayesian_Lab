@@ -33,7 +33,8 @@ class ExtendedKalmanFilter(BaseFilter):
                  measurement_func: Optional[Callable] = None,
                  state_transition_jacobian: Optional[Callable] = None,
                  measurement_jacobian: Optional[Callable] = None,
-                 measurement_noise_matrix: Optional[np.ndarray] = None):
+                 measurement_noise_matrix: Optional[np.ndarray] = None,
+                 angle_wrap_idx: Optional[int] = None):
         """
         初始化扩展卡尔曼滤波器
 
@@ -65,6 +66,8 @@ class ExtendedKalmanFilter(BaseFilter):
             self.R = np.asarray(measurement_noise_matrix, dtype=np.float64)
         else:
             self.R = np.eye(measurement_dim) * measurement_noise_std ** 2
+        # 极坐标 bearing 分量索引（设置后新息自动 wrap 到 [-pi, pi]，线性场景保持 None）
+        self.angle_wrap_idx = angle_wrap_idx
     
     def _default_state_transition(self, state: np.ndarray, dt: float) -> np.ndarray:
         """默认状态转移函数（匀速模型）
@@ -230,6 +233,8 @@ class ExtendedKalmanFilter(BaseFilter):
         # 计算新息
         z = np.asarray(measurement, dtype=np.float64)
         y = z - z_pred
+        if self.angle_wrap_idx is not None:
+            y[self.angle_wrap_idx] = (y[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
         
         # 计算新息协方差
         S = H @ self.covariance @ H.T + R
@@ -314,7 +319,10 @@ class ExtendedKalmanFilter(BaseFilter):
         """
         z = np.asarray(measurement, dtype=np.float64)
         z_pred = self.h(self.state)
-        return z - z_pred
+        innov = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innov[self.angle_wrap_idx] = (innov[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
+        return innov
     
     def get_innovation_covariance(self, measurement_covariance: Optional[np.ndarray] = None) -> np.ndarray:
         """获取新息协方差矩阵
@@ -386,7 +394,8 @@ def polar_measurement_jacobian(state: np.ndarray) -> np.ndarray:
     r = np.sqrt(x**2 + y**2)
     
     if r < 1e-6:
-        return np.zeros((2, len(state)))
+        # 近原点 fallback：钳位半径后求雅可比，避免静默零增益
+        r = 1e-6
     
     H = np.zeros((2, len(state)))
     H[0, 0] = x / r  # d(range)/dx
@@ -423,7 +432,8 @@ def range_only_measurement_jacobian(state: np.ndarray) -> np.ndarray:
     r = np.sqrt(x**2 + y**2)
     
     if r < 1e-6:
-        return np.zeros((1, len(state)))
+        # 近原点 fallback：钳位半径后求雅可比
+        r = 1e-6
     
     H = np.zeros((1, len(state)))
     H[0, 0] = x / r

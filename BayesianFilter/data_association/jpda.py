@@ -224,33 +224,13 @@ class JPDAFilter(BaseAssociation):
             association_matrix, innovation_covariances
         )
         
-        # 构建关联结果
-        associations = {}
-        unassociated_measurements = set(range(n_meas))
-        unassociated_targets = set(range(n_targets))
-        
-        # 对每个目标，选择概率最高的观测
-        for j in range(n_targets):
-            best_meas = None
-            best_prob = 0.0
-            
-            for i in range(n_meas):
-                if (i, j) in association_probs:
-                    prob = association_probs[(i, j)]
-                    if prob > best_prob:
-                        best_prob = prob
-                        best_meas = i
-            
-            if best_meas is not None and best_prob > 0.5:
-                associations[best_meas] = j
-                unassociated_measurements.discard(best_meas)
-                unassociated_targets.discard(j)
-        
+        # JPDA 本质：只输出联合关联概率，不做硬判决（硬判决请用 NN/GNN）
         return AssociationResult(
-            associations=associations,
-            unassociated_measurements=unassociated_measurements,
-            unassociated_targets=unassociated_targets,
-            association_matrix=association_matrix
+            associations={},
+            unassociated_measurements=set(range(n_meas)),
+            unassociated_targets=set(range(n_targets)),
+            association_matrix=association_matrix,
+            association_probs=dict(association_probs)
         )
     
     def _get_valid_associations(self, 

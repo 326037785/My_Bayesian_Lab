@@ -29,7 +29,8 @@ class CubatureKalmanFilter(BaseFilter):
                  measurement_noise_std: float = 1.0,
                  state_transition_func: Optional[Callable] = None,
                  measurement_func: Optional[Callable] = None,
-                 measurement_noise_matrix: Optional[np.ndarray] = None):
+                 measurement_noise_matrix: Optional[np.ndarray] = None,
+                 angle_wrap_idx: Optional[int] = None):
         """
         初始化容积卡尔曼滤波器
 
@@ -57,6 +58,7 @@ class CubatureKalmanFilter(BaseFilter):
             self.R = np.asarray(measurement_noise_matrix, dtype=np.float64)
         else:
             self.R = np.eye(measurement_dim) * measurement_noise_std ** 2
+        self.angle_wrap_idx = angle_wrap_idx
         
         # 计算容积点权重
         self.n_cubature = 2 * state_dim
@@ -265,6 +267,8 @@ class CubatureKalmanFilter(BaseFilter):
         # 计算新息
         z = np.asarray(measurement, dtype=np.float64)
         innovation = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innovation[self.angle_wrap_idx] = (innovation[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
         
         # 状态更新
         self.state = self.state + K @ innovation
@@ -360,7 +364,10 @@ class CubatureKalmanFilter(BaseFilter):
         """
         z_pred, _ = self.get_predicted_measurement()
         z = np.asarray(measurement, dtype=np.float64)
-        return z - z_pred
+        innov = z - z_pred
+        if self.angle_wrap_idx is not None:
+            innov[self.angle_wrap_idx] = (innov[self.angle_wrap_idx] + np.pi) % (2 * np.pi) - np.pi
+        return innov
     
     def get_innovation_covariance(self, measurement_covariance: Optional[np.ndarray] = None) -> np.ndarray:
         """获取新息协方差矩阵
